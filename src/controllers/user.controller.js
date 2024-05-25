@@ -17,13 +17,13 @@ const registerUser = asyncHandler(async (req, res) => {
     // step 9: send response
 
     const {fullName, email, username, password} = req.body
-    console.log("email: ", email)
+    // console.log("email: ", email)
 
     if(fullName === "" || email === "" || username === "" || password === ""){
         throw new apiError(400, "All fields are required")
     }
 
-    User.findOne({
+    await User.findOne({
         $or: [{email}, {username}]
     }).then(user => {
         if(user){
@@ -32,14 +32,19 @@ const registerUser = asyncHandler(async (req, res) => {
     })
 
     const avatarLocalPath = req.files?.avatar[0]?.path;
-    const coverImageLocalPath = req.files?.coverImage[0]?.path;
+    // const coverImageLocalPath = req.files?.coverImage[0]?.path;
+
+    let coverImageLocalPath;
+    if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0){
+        coverImageLocalPath = req.files.coverImage[0].path;
+    }
 
     if(!avatarLocalPath){
         throw new apiError(400, "Avatar is required")
     }
 
     const avatar = await uploadOnCloudinary(avatarLocalPath);
-    const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+    const coverImage = coverImageLocalPath ? await uploadOnCloudinary(coverImageLocalPath) : null;
 
     if(!avatar){
         throw new apiError(500, "Error uploading avatar")
