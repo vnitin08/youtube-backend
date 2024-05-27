@@ -247,6 +247,120 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
 
     return res.status(200).json(new apiResponse(user, 200, "Cover image updated successfully"))
 })
+
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+    const {username} = req.params // params is an object containing all the route parameters (channelId) in this case  
+
+    if(!username?.trim()){
+        throw new apiError(400, "Username is required")
+    }
+
+    const channel = await User.aggregate([
+        {
+            $match: {username: username?.toLowerCase()} // $match: {field: value} - filters the documents
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "channel",
+                as: "subscribers"
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "subscribedTo"
+            }
+        },
+        {
+            $addFields: {
+                subscribersCount: {$size: "$subscribers"},
+                channelsSubscribedToCount: {$size: "$subscribedTo"}
+            },
+            isSubscribed: {
+                $cond: {
+                    if: {
+                        $in: [req.user?._id, "$subscribers.subscriber"] // $in: [value, array] - returns true if value is present in array
+                    },
+                    then: true,
+                    else: false
+                }
+            }
+        },
+        {
+            $project: {
+                fullName: 1,
+                username: 1,
+                subscribersCount: 1,
+                channelsSubscribedToCount: 1,
+                isSubscribed: 1,
+                coverImage: 1,
+                avatar: 1,
+                email: 1
+            }
+        }
+    ])
+    console.log("channel: ", channel)
+
+    if(!channel?.length){
+        throw new apiError(404, "Channel not found")
+    }
+
+    return res.status(200)
+    .json(new apiResponse(channel[0], 200, "Channel profile fetched successfully"))
+})
+
+const getWatchHistory = asyncHandler(async (req, res) => {
+    const user = await User.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(req.user?._id)  // new mongoose.Types.ObjectId(id) - converts string id to ObjectId    
+            }
+        },
+        {
+            $lookup: {
+                from: "videos",
+                localField: "watchHistory",
+                foreignField: "_id",
+                as: "watchHistory",
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner",
+                            pipeline: [
+                                {
+                                    $project: {
+                                        fullName: 1,
+                                        username: 1,
+                                        avatar: 1
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        $addFields: {
+                            owner: {
+                                $first: "$owner"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ])
+
+    return res.status(200)
+    .json(new apiResponse(user[0]?.watchHistory, 200, "Watch history fetched successfully"))
+})
+
+
 export { 
     registerUser, 
     loginUser, 
@@ -256,5 +370,7 @@ export {
     getUserProfile, 
     updateAccountDetails, 
     updateUserAvatar, 
-    updateUserCoverImage
+    updateUserCoverImage,
+    getUserChannelProfile,
+    getWatchHistory
 }
